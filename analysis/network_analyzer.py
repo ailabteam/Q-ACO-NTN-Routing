@@ -1,4 +1,4 @@
-# File: analysis/network_analyzer.py
+# File: analysis/network_analyzer.py (ĐÃ SỬA LỖI IMPORT)
 
 import numpy as np
 import networkx as nx
@@ -7,29 +7,25 @@ import time
 import os
 import sys
 
-# FIX LỖI IMPORT: Thêm thư mục gốc vào PYTHONPATH
-# Điều này cho phép Python tìm thấy thư mục 'simulation'
+# FIX LỖI IMPORT: Đảm bảo thư mục gốc nằm trong PYTHONPATH
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import các thành phần cần thiết
+# Import các thành phần từ mô hình Synthetic mới
 from simulation.network_model import (
     DynamicLEONetwork, 
-    GS_COORDS, 
-    TLE_PATH, 
     SIM_DURATION_SECONDS, 
     TIME_SLOT_SIZE,
-    NUM_SATS # Chỉ để in thông tin
+    NUM_SATS,
+    NUM_GROUND_STATIONS
 )
 
 def analyze_network_dynamics():
     """Chạy mô phỏng dài hơi để phân tích các chỉ số mạng."""
     
-    print(f"Bắt đầu phân tích động lực học mạng...")
-    try:
-        network = DynamicLEONetwork(TLE_PATH, GS_COORDS)
-    except Exception as e:
-        print(f"Khởi tạo lỗi: {e}")
-        return
+    print(f"Bắt đầu phân tích động lực học mạng Synthetic...")
+    
+    # Khởi tạo network không cần tham số
+    network = DynamicLEONetwork()
 
     time_slots = np.arange(0, SIM_DURATION_SECONDS, TIME_SLOT_SIZE)
     
@@ -38,10 +34,10 @@ def analyze_network_dynamics():
     path_hops = []
     connectivity_status = []
     
-    source = network.gs_names[0] # Hà Nội
-    destination = network.gs_names[1] # New York
+    source = network.gs_names[2] # London (GS_2)
+    destination = network.gs_names[3] # Tokyo (GS_3)
 
-    print(f"\n--- Phân tích Động lực học Mạng LEO ({SIM_DURATION_SECONDS}s) ---")
+    print(f"\n--- Phân tích Động lực học Mạng Synthetic ({SIM_DURATION_SECONDS}s) ---")
     
     for t_sec in time_slots:
         G_t = network.get_network_graph(t_sec)
@@ -50,7 +46,12 @@ def analyze_network_dynamics():
         link_counts.append(G_t.number_of_edges())
         
         # B. Thu thập trạng thái kết nối
-        is_connected = nx.is_connected(G_t)
+        try:
+             is_connected = nx.is_connected(G_t)
+        except nx.NetworkXPointlessConcept:
+             # Xử lý trường hợp đồ thị quá thưa
+             is_connected = False
+             
         connectivity_status.append(is_connected)
 
         # C. Thu thập thông số đường đi ngắn nhất
@@ -79,7 +80,7 @@ def analyze_network_dynamics():
     
     valid_delays = np.array([d for d in path_delays if not np.isnan(d)])
     
-    print(f"\n--- Phân tích Đường đi (GS_0 -> GS_1) ---")
+    print(f"\n--- Phân tích Đường đi ({source} -> {destination}) ---")
     if len(valid_delays) > 0:
         print(f"Tỉ lệ thời gian tìm thấy đường đi: {len(valid_delays) / len(time_slots) * 100:.2f}%")
         print(f"Độ trễ trung bình (SP): {np.mean(valid_delays):.3f}ms")
@@ -88,22 +89,31 @@ def analyze_network_dynamics():
     else:
         print("Không tìm thấy đường đi nào trong suốt thời gian mô phỏng.")
 
-    # 3. Vẽ biểu đồ
-    # ... (Logic vẽ biểu đồ giữ nguyên) ...
+    # 3. Vẽ biểu đồ (Đảm bảo không lỗi)
     plt.figure(figsize=(12, 5))
     
+    # Biểu đồ 1: Số lượng Liên kết
     plt.subplot(1, 2, 1)
     plt.plot(time_slots, link_counts)
     plt.title('Số lượng Liên kết (Links) theo Thời gian')
     plt.xlabel('Thời gian (s)')
     plt.ylabel('Số lượng Liên kết')
     
+    # Biểu đồ 2: Độ trễ Đường đi ngắn nhất
     plt.subplot(1, 2, 2)
-    plt.plot(time_slots, valid_delays, label='Độ trễ SP')
+    
+    if len(valid_delays) > 0:
+        delays_to_plot = np.array(path_delays)
+        plt.plot(time_slots, delays_to_plot, label='Độ trễ SP')
+        plt.ylim(bottom=0)
+    else:
+        plt.text(0.5, 0.5, 'Không có đường đi nào được tìm thấy.', 
+                 horizontalalignment='center', verticalalignment='center', 
+                 transform=plt.gca().transAxes, color='red')
+                 
     plt.title(f'Độ trễ Đường đi ngắn nhất {source} -> {destination}')
     plt.xlabel('Thời gian (s)')
     plt.ylabel('Độ trễ (ms)')
-    plt.legend()
     plt.grid(True)
     
     plt.tight_layout()
