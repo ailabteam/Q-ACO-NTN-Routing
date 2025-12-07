@@ -1,0 +1,10 @@
+numpy==1.26.4
+scipy==1.13.0
+networkx==3.2.1
+skyfield==1.46
+simpy==4.0.2
+matplotlib==3.8.3
+seaborn==0.13.2
+# CuPy cần phiên bản tương ứng với CUDA (12.x)
+# Vì bạn dùng CUDA 12.5, chúng ta dùng cupy-cuda12x
+cupy-cuda12x==13.2.0
