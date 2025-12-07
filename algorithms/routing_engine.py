@@ -6,18 +6,20 @@ import networkx as nx
 import time
 import sys
 import os
+import cupy as cp
+
 
 # FIX: Đảm bảo import từ thư mục gốc
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from simulation.network_model import DynamicLEONetwork, NUM_SATS, NUM_GROUND_STATIONS
 
-# --- Cấu hình ACO/Q-ACO chung ---
+# --- Cấu hình ACO/Q-ACO chung (Đã tối ưu hóa) ---
 ALPHA = 1.0  # Trọng số Pheromone
-BETA = 5.0   # Trọng số Heuristic (Độ trễ). Tăng BETA để ưu tiên đường ngắn (Delay thấp)
-RHO = 0.1    # Tốc độ bay hơi Pheromone (Evaporation Rate)
-Q0 = 100.0   # Hằng số tích lũy Pheromone (Tăng lên để tương thích với delay ms)
-NUM_ANTS = 512 # Số lượng Kiến (Là lũy thừa của 2, tối ưu cho GPU)
-MAX_ITERATIONS = 50 # Số lần lặp tìm kiếm trong mỗi time slot
+BETA = 8.0   # Tăng cường Trọng số Heuristic (Độ trễ)
+RHO = 0.1    # Tốc độ bay hơi Pheromone
+Q0 = 1000.0  # Tăng cường lắng đọng Pheromone (học nhanh hơn)
+NUM_ANTS = 1024 # Tăng số lượng Kiến (tận dụng GPU)
+MAX_ITERATIONS = 50 
 
 class RoutingEngine:
     def __init__(self, network_model):
@@ -71,24 +73,24 @@ class RoutingEngine:
 
     def calculate_transition_probs(self, current_node_id: int) -> cp.ndarray:
         """Tính ma trận xác suất chuyển tiếp cho nút hiện tại (Sử dụng GPU)."""
-        
+
         tau_row = self.pheromone_matrix[current_node_id, :]
         eta_row = self.heuristic_matrix[current_node_id, :]
         adj_row = self.adj_matrix_cp[current_node_id, :]
 
         # 1. Tính toán Tử số (Numerator)
         # Numerator = Tau^Alpha * Eta^Beta
-        
+
         # NOTE: Các giá trị eta_row=0 (không có link) sẽ làm cho numerator=0.
         # Chúng ta chỉ cần đảm bảo rằng ta không tính toán trên các link không tồn tại (adj_row=False).
         numerator = cp.power(tau_row, ALPHA) * cp.power(eta_row, BETA)
-        
+
         # Áp dụng ràng buộc mạng (chỉ xét hàng xóm có liên kết)
         numerator = cp.where(adj_row, numerator, 0.0)
 
         # 2. Tính toán Mẫu số (Denominator)
         denominator = cp.sum(numerator)
-        
+
         # 3. Tính Xác suất P
         if denominator == 0:
             return cp.zeros(self.num_nodes, dtype=cp.float32)
@@ -96,7 +98,7 @@ class RoutingEngine:
         # Sử dụng CuPy where để chia cho mẫu số, nếu mẫu số là 0 thì kết quả là 0
         # Mặc dù chúng ta đã kiểm tra denominator == 0, việc sử dụng cp.where là an toàn hơn
         probs = cp.where(denominator > 0, numerator / denominator, 0.0)
-        
+
         return probs
 
 
